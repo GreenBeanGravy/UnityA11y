@@ -580,6 +580,7 @@ namespace UnityA11y.Unity
         {
             if (string.IsNullOrEmpty(s)) return s;
             if (s.IndexOf('<') < 0 && !HasZeroWidth(s)) return s.Trim();
+            s = SpritesAsWords(s);
             var sb = new System.Text.StringBuilder(s.Length);
             bool inTag = false;
             for (int i = 0; i < s.Length; i++)
@@ -589,7 +590,56 @@ namespace UnityA11y.Unity
                 if (c == '>') { inTag = false; continue; }
                 if (!inTag && !IsZeroWidth(c)) sb.Append(c);
             }
-            return sb.ToString().Trim();
+            return CollapseSpaces(sb.ToString()).Trim();
+        }
+
+        private static readonly System.Text.RegularExpressions.Regex SpriteTag =
+            new System.Text.RegularExpressions.Regex(@"<sprite[^>]*?name\s*=\s*[""']?([^""'>\s]+)[""']?[^>]*>",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+        /// <summary>
+        /// TextMesh Pro sprites often stand for a word: "+2&lt;sprite name=Attack&gt;". Stripping
+        /// the tag with the rest lost it ("+2"). A sprite reads as its name, split at capitals,
+        /// unless the text right after it already says that word ("[mana icon] mana").
+        /// </summary>
+        public static string SpritesAsWords(string s)
+        {
+            if (string.IsNullOrEmpty(s) || s.IndexOf("<sprite", StringComparison.OrdinalIgnoreCase) < 0) return s;
+            // A loop rather than a MatchEvaluator lambda: the IL2CPP build's references lack the
+            // NullableAttribute such a lambda needs.
+            var sb = new System.Text.StringBuilder(s.Length);
+            int last = 0;
+            foreach (System.Text.RegularExpressions.Match m in SpriteTag.Matches(s))
+            {
+                sb.Append(s, last, m.Index - last);
+                last = m.Index + m.Length;
+                string word = System.Text.RegularExpressions.Regex.Replace(m.Groups[1].Value, "(?<=[a-z])(?=[A-Z0-9])", " ");
+                string rest = s.Substring(last).TrimStart();
+                sb.Append(rest.StartsWith(word, StringComparison.OrdinalIgnoreCase) ? " " : " " + word + " ");
+            }
+            sb.Append(s, last, s.Length - last);
+            return sb.ToString();
+        }
+
+        private static string CollapseSpaces(string s)
+        {
+            if (s.IndexOf("  ", StringComparison.Ordinal) < 0) return s;
+            var sb = new System.Text.StringBuilder(s.Length);
+            bool space = false;
+            foreach (char c in s)
+            {
+                if (c == ' ')
+                {
+                    if (space) continue;
+                    space = true;
+                }
+                else
+                {
+                    space = false;
+                }
+                sb.Append(c);
+            }
+            return sb.ToString();
         }
 
         private static bool IsZeroWidth(char c) =>
