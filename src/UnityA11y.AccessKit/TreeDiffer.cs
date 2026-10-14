@@ -249,8 +249,8 @@ namespace UnityA11y.AccessKitInterop
 
                 if (declared != actual)
                 {
-                    UnityEngine.Debug.LogError(
-                        "[UnityA11y] Node " + n.Id + " declares " + declared + " bytes of characters but its " +
+                    A11yLog.Write(
+                        "Node " + n.Id + " declares " + declared + " bytes of characters but its " +
                         "value is " + actual + " UTF-8 bytes. Publishing that would abort the process, so the " +
                         "text is omitted and this field will not be readable character by character.");
                 }

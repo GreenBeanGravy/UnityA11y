@@ -60,6 +60,15 @@ namespace UnityA11y.AccessKitInterop
         [DllImport("user32.dll")]
         private static extern bool IsWindow(IntPtr hWnd);
 
+        [DllImport("user32.dll", EntryPoint = "GetClassNameW", CharSet = CharSet.Unicode)]
+        private static extern int GetClassName(IntPtr hWnd, System.Text.StringBuilder className, int maxCount);
+
+        [DllImport("user32.dll", EntryPoint = "DefWindowProcW")]
+        private static extern IntPtr DefWindowProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+        /// <summary>The window class of every Unity player window.</summary>
+        private const string UnityWindowClass = "UnityWndClass";
+
         [DllImport("kernel32.dll")]
         private static extern void SetLastError(uint code);
 
@@ -309,6 +318,10 @@ namespace UnityA11y.AccessKitInterop
 
         private IntPtr WndProc(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam)
         {
+            // Read before anything else: WM_DESTROY detaches, which clears the field, and the
+            // message still has to reach the original procedure afterwards. Forwarding to a null
+            // procedure is what this used to do on exit.
+            IntPtr prev = _prevWndProc;
             WndProcMessages++;
             try
             {
@@ -340,7 +353,9 @@ namespace UnityA11y.AccessKitInterop
                 Log("WndProc threw: " + ex);
             }
 
-            return CallWindowProc(_prevWndProc, hWnd, msg, wParam, lParam);
+            return prev != IntPtr.Zero
+                ? CallWindowProc(prev, hWnd, msg, wParam, lParam)
+                : DefWindowProc(hWnd, msg, wParam, lParam);
         }
 
         // ---- Window discovery -------------------------------------------------
@@ -350,22 +365,40 @@ namespace UnityA11y.AccessKitInterop
             // GetActiveWindow returns a handle only when called on the thread that
             // owns the window. From Unity's main thread that is exactly right.
             var h = GetActiveWindow();
-            if (h != IntPtr.Zero && IsWindow(h)) return h;
+            if (h != IntPtr.Zero && IsWindow(h) && IsUnityWindow(h)) return h;
+
+            // Not active yet (still loading, or the user is in another window). The player
+            // window is the one with Unity's class; mod loaders can own other windows in the
+            // process (a console, a splash screen), so "first visible window" is a last resort.
+            h = FindOwnWindow(requireUnityClass: true);
+            if (h != IntPtr.Zero) return h;
 
             h = GetForegroundWindow();
             if (h != IntPtr.Zero && BelongsToThisProcess(h)) return h;
 
+            return FindOwnWindow(requireUnityClass: false);
+        }
+
+        private static IntPtr FindOwnWindow(bool requireUnityClass)
+        {
             IntPtr found = IntPtr.Zero;
             // Held in a local so the delegate cannot be collected mid-enumeration.
             EnumWindowsProc callback = (hWnd, _) =>
             {
                 if (!IsWindowVisible(hWnd) || !BelongsToThisProcess(hWnd)) return true;
+                if (requireUnityClass && !IsUnityWindow(hWnd)) return true;
                 found = hWnd;
                 return false;
             };
             EnumWindows(callback, IntPtr.Zero);
             GC.KeepAlive(callback);
             return found;
+        }
+
+        private static bool IsUnityWindow(IntPtr hWnd)
+        {
+            var name = new System.Text.StringBuilder(64);
+            return GetClassName(hWnd, name, name.Capacity) > 0 && name.ToString() == UnityWindowClass;
         }
 
         private static bool BelongsToThisProcess(IntPtr hWnd)

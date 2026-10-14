@@ -43,8 +43,12 @@ namespace UnityA11y.AccessKitInterop
         [StructLayout(LayoutKind.Sequential)]
         internal struct OptLResult
         {
-            [MarshalAs(UnmanagedType.I1)] public bool HasValue;
+            // A byte rather than a bool marshalled as I1 keeps the struct blittable, which
+            // every runtime returns by value the same way (Mono, and CoreCLR under MelonLoader).
+            public byte HasValueByte;
             public IntPtr Value;
+
+            public bool HasValue => HasValueByte != 0;
         }
 
         [StructLayout(LayoutKind.Sequential)]
