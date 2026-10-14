@@ -1,0 +1,16 @@
+Third-party notices for UnityA11y
+
+UnityA11y is covered by LICENSE. The component below is not; it keeps its own
+license, and nothing in LICENSE changes or limits its terms. The full license
+texts are in the licenses folder.
+
+
+AccessKit (native/accesskit.dll, accesskit-c 0.22.3)
+  Copyright The AccessKit Authors (Arnold Loubriat, Matt Campbell,
+  Leonard de Ruijter and contributors).
+  Used under the MIT license (AccessKit is offered under MIT or Apache-2.0).
+  Portions are derived from Chromium, Copyright 2015 The Chromium Authors,
+  under a BSD-style license. The Rust libraries compiled into accesskit.dll
+  are under the MIT or Apache-2.0 licenses.
+  Source: https://github.com/AccessKit/accesskit-c
+  License texts: licenses/AccessKit-MIT.txt, licenses/AccessKit-Chromium-BSD.txt
