@@ -158,6 +158,11 @@ namespace UnityA11y.Unity
             bool useGroups = groupOrder.Count > 1;
             ulong nextGroupId = FirstGroupId;
 
+            // Flattened: the root is the controls' container, and AccessKit answers UIA
+            // SizeOfSet from the container, so it has to carry the count or every control
+            // reads as "n of 0".
+            if (!useGroups && groupOrder.Count == 1) root.SizeOfSet = groups[KeyIdentity(groupOrder[0])].Count;
+
             for (int g = 0; g < groupOrder.Count; g++)
             {
                 var key = groupOrder[g];
