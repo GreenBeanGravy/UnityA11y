@@ -159,6 +159,14 @@ Pass `registerUGuiSource: false` when the host registers its own source with an
 authored reading order, so the generic scanner's geometric guess does not compete
 with it.
 
+In provider mode a source should not choose a focus the host has not set. When a
+screen opens, the host often selects its first control a frame or two after the
+tree is rebuilt. If the source focuses some control in the meantime, the screen
+reader starts reading it, and the host's real focus then cancels that speech,
+dialog title included; the title is not repeated, because the dialog was already
+an ancestor. Leave focus on the window root until the host's selection is in the
+tree.
+
 A mod that had its own speech before (Tolk and the like) should hand menu speech
 to the screen reader only when three things hold: the bridge is attached, a
 screen reader is running, and the tree publishes the control in question. If any
