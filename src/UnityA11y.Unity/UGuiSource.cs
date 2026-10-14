@@ -566,11 +566,15 @@ namespace UnityA11y.Unity
             return g != null ? TmpSupport.GetText(g) : null;
         }
 
-        /// <summary>Strips Unity rich-text markup, which a screen reader would spell out.</summary>
+        /// <summary>
+        /// Strips Unity rich-text markup, which a screen reader would spell out, and zero-width
+        /// characters: TextMeshPro input fields append U+200B to their text, which some symbol
+        /// levels read aloud.
+        /// </summary>
         public static string Clean(string s)
         {
             if (string.IsNullOrEmpty(s)) return s;
-            if (s.IndexOf('<') < 0) return s.Trim();
+            if (s.IndexOf('<') < 0 && !HasZeroWidth(s)) return s.Trim();
             var sb = new System.Text.StringBuilder(s.Length);
             bool inTag = false;
             for (int i = 0; i < s.Length; i++)
@@ -578,9 +582,19 @@ namespace UnityA11y.Unity
                 char c = s[i];
                 if (c == '<') { inTag = true; continue; }
                 if (c == '>') { inTag = false; continue; }
-                if (!inTag) sb.Append(c);
+                if (!inTag && !IsZeroWidth(c)) sb.Append(c);
             }
             return sb.ToString().Trim();
+        }
+
+        private static bool IsZeroWidth(char c) =>
+            c == '​' || c == '‌' || c == '‍' || c == '⁠' || c == '﻿';
+
+        private static bool HasZeroWidth(string s)
+        {
+            for (int i = 0; i < s.Length; i++)
+                if (IsZeroWidth(s[i])) return true;
+            return false;
         }
 
         /// <summary>"MasterVolumeSlider" -> "Master Volume Slider". Last-resort labelling.</summary>
