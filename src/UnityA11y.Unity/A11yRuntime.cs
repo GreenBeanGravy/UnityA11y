@@ -8,14 +8,25 @@ namespace UnityA11y.Unity
 {
     /// <summary>
     /// The driver. Owns the AccessKit bridge, the registered UI sources and the
-    /// navigation controller, and pumps them from Update().
+    /// navigation controller, and pumps them from <see cref="Tick"/>.
+    ///
+    /// On Mono it is a MonoBehaviour and Unity calls Tick from Update. Under IL2CPP a
+    /// MonoBehaviour defined in a mod has to be registered with the IL2CPP class injector
+    /// before AddComponent works, so there it is a plain object and the host calls
+    /// <see cref="Tick"/> from its own per-frame callback (MelonMod.OnUpdate) and
+    /// <see cref="Dispose"/> when the game quits.
     ///
     /// Threading invariant that everything else depends on: the snapshot is only
-    /// ever mutated from Update(), and AccessKit's activation handler and update
+    /// ever mutated from Tick(), and AccessKit's activation handler and update
     /// factory only ever run on the window thread, which is the same thread,
-    /// between Update calls. Nothing here is safe to call from a worker.
+    /// between Tick calls. Nothing here is safe to call from a worker.
     /// </summary>
-    public sealed class A11yRuntime : MonoBehaviour
+    public sealed class A11yRuntime
+#if IL2CPP
+        : IDisposable
+#else
+        : MonoBehaviour, IDisposable
+#endif
     {
         /// <summary>Reserved node ids. Sources must not use these.</summary>
         public const ulong RootId = 1;
@@ -44,7 +55,13 @@ namespace UnityA11y.Unity
         /// </summary>
         public bool RefreshFocusedNode = true;
 
+#if IL2CPP
+        // Debug.Log from a thread IL2CPP does not know about crashes the process, and the bridge
+        // logs from UIA threads. Hosts replace this with their own logger (MelonLogger is safe).
+        public Action<string> Log = msg => Console.WriteLine("[UnityA11y] " + msg);
+#else
         public Action<string> Log = msg => Debug.Log("[UnityA11y] " + msg);
+#endif
 
         public IFocusOwner Focus => _nav;
 
@@ -83,10 +100,14 @@ namespace UnityA11y.Unity
                                          bool registerUGuiSource)
         {
             if (Instance != null) return Instance;
+#if IL2CPP
+            var runtime = new A11yRuntime();
+#else
             var go = new GameObject("UnityA11yRuntime");
             DontDestroyOnLoad(go);
             go.hideFlags = HideFlags.HideAndDontSave;
             var runtime = go.AddComponent<A11yRuntime>();
+#endif
             runtime.Initialize(focusOwner, suppressor, registerUGuiSource);
             return runtime;
         }
@@ -95,6 +116,7 @@ namespace UnityA11y.Unity
                                 bool registerUGuiSource)
         {
             Instance = this;
+            A11yLog.Sink = m => Log(m);
 
             _bridge = new AccessKitBridge { Log = m => Log(m) };
             if (!_bridge.Start())
@@ -230,7 +252,15 @@ namespace UnityA11y.Unity
 
         // ---- Main loop ----------------------------------------------------------
 
-        private void Update()
+#if !IL2CPP
+        private void Update() => Tick();
+#endif
+
+        /// <summary>
+        /// One frame of work: pick the active source, rebuild or refresh, drain the screen
+        /// reader's requests and publish. Call once per frame on the main thread.
+        /// </summary>
+        public void Tick()
         {
             var chosen = SelectSource();
             if (chosen != _active)
@@ -438,11 +468,23 @@ namespace UnityA11y.Unity
             }
         }
 
-        private void OnDestroy()
+#if !IL2CPP
+        private void OnDestroy() => Dispose();
+#endif
+
+        /// <summary>
+        /// Detach from the window and release the keyboard. Under IL2CPP call this from the host's
+        /// quit callback: the window procedure points into managed code until it runs.
+        /// </summary>
+        public void Dispose()
         {
+            if (_disposed) return;
+            _disposed = true;
             _nav?.Release();
             _bridge?.Dispose();
             if (Instance == this) Instance = null;
         }
+
+        private bool _disposed;
     }
 }

@@ -1,10 +1,13 @@
 using System;
 using System.Collections.Generic;
-using System.Reflection;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using UnityA11y.Core;
+#if IL2CPP
+// MelonLoader's generator prefixes every non-Unity namespace with Il2Cpp.
+using TMPro = Il2CppTMPro;
+#endif
 
 namespace UnityA11y.Unity
 {
@@ -35,6 +38,34 @@ namespace UnityA11y.Unity
 
         private int _lastSignature;
         private bool _dirty = true;
+        private float _nextSignatureAt;
+        private int _refreshFrame = -1;
+        private bool _refreshAllowed;
+        private float _nextRefreshAt;
+
+        /// <summary>
+        /// Seconds between structural checks. Every check walks every Selectable, which under
+        /// IL2CPP crosses into native code and allocates a wrapper per control, so IL2CPP builds
+        /// check four times a second instead of every frame. <see cref="Invalidate"/> still
+        /// forces the next check.
+        /// </summary>
+        public float SignatureInterval =
+#if IL2CPP
+            0.25f;
+#else
+            0f;
+#endif
+
+        /// <summary>
+        /// Seconds between refreshes of the focused control's values. Zero refreshes every frame.
+        /// IL2CPP builds refresh ten times a second, for the same reason as SignatureInterval.
+        /// </summary>
+        public float RefreshInterval =
+#if IL2CPP
+            0.1f;
+#else
+            0f;
+#endif
 
         public IReadOnlyList<ulong> FocusRing => _focusRing;
 
@@ -49,20 +80,27 @@ namespace UnityA11y.Unity
             get
             {
                 if (_dirty) return true;
+                float now = Time.unscaledTime;
+                if (now < _nextSignatureAt) return false;
+                _nextSignatureAt = now + SignatureInterval;
                 int sig = ComputeSignature();
                 if (sig != _lastSignature) { _lastSignature = sig; return true; }
                 return false;
             }
         }
 
-        public void Invalidate() => _dirty = true;
+        public void Invalidate()
+        {
+            _dirty = true;
+            _nextSignatureAt = 0f;
+        }
 
         protected virtual int ComputeSignature()
         {
             unchecked
             {
                 int hash = 17;
-                var all = SelectableCompat.All();
+                var all = Compat.AllSelectables();
                 for (int i = 0; i < all.Count; i++)
                 {
                     var s = all[i];
@@ -104,11 +142,12 @@ namespace UnityA11y.Unity
             {
                 var sel = _scratch[i];
                 object key = GroupKeyFor(sel) ?? this;
+                object identity = KeyIdentity(key);
                 List<Selectable> bucket;
-                if (!groups.TryGetValue(key, out bucket))
+                if (!groups.TryGetValue(identity, out bucket))
                 {
                     bucket = new List<Selectable>();
-                    groups[key] = bucket;
+                    groups[identity] = bucket;
                     groupOrder.Add(key);
                 }
                 bucket.Add(sel);
@@ -122,7 +161,7 @@ namespace UnityA11y.Unity
             for (int g = 0; g < groupOrder.Count; g++)
             {
                 var key = groupOrder[g];
-                var bucket = groups[key];
+                var bucket = groups[KeyIdentity(key)];
                 AccessNode parent = root;
 
                 if (useGroups)
@@ -167,6 +206,17 @@ namespace UnityA11y.Unity
         }
 
         /// <summary>
+        /// Two lookups of the same Canvas can hand back two different wrapper objects under
+        /// IL2CPP, and those are not equal as dictionary keys, so every control would land in a
+        /// group of its own. Unity objects are keyed by instance id instead.
+        /// </summary>
+        private static object KeyIdentity(object key)
+        {
+            var unityObject = key as UnityEngine.Object;
+            return unityObject != null ? (object)unityObject.GetInstanceID() : key;
+        }
+
+        /// <summary>
         /// What counts as one group of related controls. Defaults to the Canvas,
         /// which separates screens in games that use one Canvas per menu. Override
         /// to group by panel, tab or whatever the game's structure actually is.
@@ -179,14 +229,14 @@ namespace UnityA11y.Unity
 
         protected virtual string GroupLabelFor(object key)
         {
-            var canvas = key as Canvas;
+            var canvas = Compat.As<Canvas>(key);
             return canvas != null ? Humanize(canvas.gameObject.name) : null;
         }
 
         protected virtual void CollectSelectables(List<Selectable> results)
         {
             results.Clear();
-            var all = SelectableCompat.All();
+            var all = Compat.AllSelectables();
             for (int i = 0; i < all.Count; i++)
             {
                 var s = all[i];
@@ -223,7 +273,7 @@ namespace UnityA11y.Unity
                 t = t.parent;
             }
 
-            var rt = s.transform as RectTransform;
+            var rt = Compat.As<RectTransform>(s.transform);
             if (rt != null && (rt.rect.width <= 0f || rt.rect.height <= 0f)) return false;
 
             return true;
@@ -280,11 +330,12 @@ namespace UnityA11y.Unity
         /// </summary>
         protected virtual void PopulateNode(Selectable sel, AccessNode node, int index, int total)
         {
-            var over = sel.GetComponent<A11yLabel>();
+            string overLabel, overDescription;
+            A11yLabels.TryGet(sel.gameObject, out overLabel, out overDescription);
 
             node.Role = RoleFor(sel);
             node.Label = ExtractLabel(sel);
-            node.Description = over != null && !string.IsNullOrEmpty(over.Description) ? over.Description : null;
+            node.Description = !string.IsNullOrEmpty(overDescription) ? overDescription : null;
             node.Disabled = !IsEffectivelyInteractable(sel);
             node.PositionInSet = index;
             node.SizeOfSet = total;
@@ -292,7 +343,7 @@ namespace UnityA11y.Unity
 
             ApplyBounds(sel, node);
 
-            var toggle = sel as Toggle;
+            var toggle = Compat.As<Toggle>(sel);
             if (toggle != null)
             {
                 node.Toggled = toggle.isOn ? Core.Toggled.True : Core.Toggled.False;
@@ -303,7 +354,7 @@ namespace UnityA11y.Unity
                 return;
             }
 
-            var slider = sel as Slider;
+            var slider = Compat.As<Slider>(sel);
             if (slider != null)
             {
                 node.NumericValue = slider.value;
@@ -323,7 +374,7 @@ namespace UnityA11y.Unity
                 return;
             }
 
-            var scrollbar = sel as Scrollbar;
+            var scrollbar = Compat.As<Scrollbar>(sel);
             if (scrollbar != null)
             {
                 node.NumericValue = scrollbar.value;
@@ -337,7 +388,7 @@ namespace UnityA11y.Unity
                 return;
             }
 
-            var dropdown = sel as Dropdown;
+            var dropdown = Compat.As<Dropdown>(sel);
             if (dropdown != null)
             {
                 node.Value = dropdown.value >= 0 && dropdown.value < dropdown.options.Count
@@ -352,7 +403,7 @@ namespace UnityA11y.Unity
                 return;
             }
 
-            var input = sel as InputField;
+            var input = Compat.As<InputField>(sel);
             if (input != null)
             {
                 // Never publish the contents of a password field.
@@ -369,20 +420,24 @@ namespace UnityA11y.Unity
 
         protected virtual void ApplyBounds(Selectable sel, AccessNode node)
         {
-            var rt = sel.transform as RectTransform;
+            var rt = Compat.As<RectTransform>(sel.transform);
             if (rt == null) return;
 
             var canvas = sel.GetComponentInParent<Canvas>();
             // Screen Space - Overlay uses a null camera; every other render mode
-            // needs the canvas camera or the coordinates are meaningless.
+            // needs the canvas camera or the coordinates are meaningless. Not ??:
+            // a destroyed camera compares equal to null only through Unity's ==.
             Camera cam = null;
             if (canvas != null && canvas.renderMode != RenderMode.ScreenSpaceOverlay)
-                cam = canvas.worldCamera ?? Camera.main;
+            {
+                cam = canvas.worldCamera;
+                if (cam == null) cam = Camera.main;
+            }
 
-            var corners = new Vector3[4];
-            rt.GetWorldCorners(corners);
-            var min = RectTransformUtility.WorldToScreenPoint(cam, corners[0]);
-            var max = RectTransformUtility.WorldToScreenPoint(cam, corners[2]);
+            Vector3 bottomLeft, topRight;
+            Compat.GetWorldCorners(rt, out bottomLeft, out topRight);
+            var min = RectTransformUtility.WorldToScreenPoint(cam, bottomLeft);
+            var max = RectTransformUtility.WorldToScreenPoint(cam, topRight);
 
             // AccessKit and UIA use a top-left origin; Unity screen space is
             // bottom-left, so the Y axis has to be flipped.
@@ -395,6 +450,8 @@ namespace UnityA11y.Unity
 
         public virtual bool TryRefreshNode(ulong id, AccessNode into)
         {
+            if (!RefreshAllowedThisFrame()) return false;
+
             Selectable sel;
             if (!_selectableById.TryGetValue(id, out sel) || sel == null) return false;
 
@@ -405,6 +462,24 @@ namespace UnityA11y.Unity
             into.Reset(id, RoleFor(sel));
             PopulateNode(sel, into, index, size);
             return true;
+        }
+
+        /// <summary>
+        /// One decision per frame, so the focused control and its children are refreshed
+        /// together or not at all.
+        /// </summary>
+        private bool RefreshAllowedThisFrame()
+        {
+            if (RefreshInterval <= 0f) return true;
+            int frame = Time.frameCount;
+            if (frame != _refreshFrame)
+            {
+                _refreshFrame = frame;
+                float now = Time.unscaledTime;
+                _refreshAllowed = now >= _nextRefreshAt;
+                if (_refreshAllowed) _nextRefreshAt = now + RefreshInterval;
+            }
+            return _refreshAllowed;
         }
 
         protected virtual string FormatSliderValue(Slider s)
@@ -419,16 +494,16 @@ namespace UnityA11y.Unity
 
         protected virtual AccessRole RoleFor(Selectable sel)
         {
-            if (sel is Button) return AccessRole.Button;
-            if (sel is Scrollbar) return AccessRole.ScrollBar;
-            if (sel is Slider) return AccessRole.Slider;
-            if (sel is Dropdown) return AccessRole.ComboBox;
+            if (Compat.Is<Button>(sel)) return AccessRole.Button;
+            if (Compat.Is<Scrollbar>(sel)) return AccessRole.ScrollBar;
+            if (Compat.Is<Slider>(sel)) return AccessRole.Slider;
+            if (Compat.Is<Dropdown>(sel)) return AccessRole.ComboBox;
 
-            var toggle = sel as Toggle;
+            var toggle = Compat.As<Toggle>(sel);
             if (toggle != null)
                 return toggle.group != null ? AccessRole.RadioButton : AccessRole.CheckBox;
 
-            var input = sel as InputField;
+            var input = Compat.As<InputField>(sel);
             if (input != null)
             {
                 if (input.contentType == InputField.ContentType.Password) return AccessRole.PasswordInput;
@@ -447,8 +522,10 @@ namespace UnityA11y.Unity
         /// </summary>
         protected virtual string ExtractLabel(Selectable sel)
         {
-            var over = sel.GetComponent<A11yLabel>();
-            if (over != null && !string.IsNullOrEmpty(over.Label)) return over.Label;
+            string overLabel, overDescription;
+            if (A11yLabels.TryGet(sel.gameObject, out overLabel, out overDescription) &&
+                !string.IsNullOrEmpty(overLabel))
+                return overLabel;
 
             string text = FindTextInChildren(sel.transform);
             if (!string.IsNullOrEmpty(text)) return text;
@@ -484,7 +561,7 @@ namespace UnityA11y.Unity
 
         protected static string ExtractText(Graphic g)
         {
-            var t = g as Text;
+            var t = Compat.As<Text>(g);
             if (t != null) return Clean(t.text);
             return g != null ? TmpSupport.GetText(g) : null;
         }
@@ -577,13 +654,13 @@ namespace UnityA11y.Unity
         {
             if (action.HasNumericValue)
             {
-                var slider = sel as Slider;
+                var slider = Compat.As<Slider>(sel);
                 if (slider != null)
                 {
                     slider.value = Mathf.Clamp((float)action.NumericValue, slider.minValue, slider.maxValue);
                     return true;
                 }
-                var scrollbar = sel as Scrollbar;
+                var scrollbar = Compat.As<Scrollbar>(sel);
                 if (scrollbar != null)
                 {
                     scrollbar.value = Mathf.Clamp01((float)action.NumericValue);
@@ -593,7 +670,7 @@ namespace UnityA11y.Unity
 
             if (action.StringValue != null)
             {
-                var input = sel as InputField;
+                var input = Compat.As<InputField>(sel);
                 if (input != null && input.contentType != InputField.ContentType.Password)
                 {
                     input.text = action.StringValue;
@@ -607,10 +684,10 @@ namespace UnityA11y.Unity
         {
             if (sel == null || !IsEffectivelyInteractable(sel)) return false;
 
-            var toggle = sel as Toggle;
+            var toggle = Compat.As<Toggle>(sel);
             if (toggle != null) { toggle.isOn = !toggle.isOn; return true; }
 
-            var dropdown = sel as Dropdown;
+            var dropdown = Compat.As<Dropdown>(sel);
             if (dropdown != null) { dropdown.Show(); return true; }
 
             // Route through the EventSystem rather than calling onClick directly:
@@ -627,7 +704,7 @@ namespace UnityA11y.Unity
 
         public virtual bool Nudge(Selectable sel, int direction)
         {
-            var slider = sel as Slider;
+            var slider = Compat.As<Slider>(sel);
             if (slider != null)
             {
                 float step = slider.wholeNumbers ? 1f : (slider.maxValue - slider.minValue) / 20f;
@@ -635,14 +712,14 @@ namespace UnityA11y.Unity
                 return true;
             }
 
-            var scrollbar = sel as Scrollbar;
+            var scrollbar = Compat.As<Scrollbar>(sel);
             if (scrollbar != null)
             {
                 scrollbar.value = Mathf.Clamp01(scrollbar.value + 0.1f * direction);
                 return true;
             }
 
-            var dropdown = sel as Dropdown;
+            var dropdown = Compat.As<Dropdown>(sel);
             if (dropdown != null && dropdown.options.Count > 0)
             {
                 int next = dropdown.value + direction;
@@ -662,54 +739,92 @@ namespace UnityA11y.Unity
         }
     }
 
+#if !IL2CPP
     /// <summary>
-    /// Drop this on a GameObject to override what the scanner would guess.
+    /// Drop this on a GameObject to override what the scanner would guess. Mono only: IL2CPP
+    /// cannot add an unregistered MonoBehaviour, so use <see cref="A11yLabels"/> there.
     /// </summary>
     public class A11yLabel : MonoBehaviour
     {
         public string Label;
         public string Description;
     }
+#endif
 
+#if IL2CPP
     /// <summary>
-    /// Selectable.allSelectablesArray only exists from Unity 2019.3. Older games
-    /// expose the List-based allSelectables instead, and calling the missing one
-    /// throws MissingMethodException at JIT time, which is not catchable at the
-    /// call site in a useful way. So resolve it once by reflection.
+    /// TextMeshPro under IL2CPP. The reflection shim the Mono build uses cannot work here: the
+    /// interop types only answer TryCast, and the overloads take Il2CppSystem.Type, so this build
+    /// references Unity.TextMeshPro directly.
     /// </summary>
-    internal static class SelectableCompat
+    internal static class TmpSupport
     {
-        private static bool _probed;
-        private static PropertyInfo _arrayProp;
-        private static PropertyInfo _listProp;
-        private static readonly List<Selectable> _buffer = new List<Selectable>(256);
-
-        public static List<Selectable> All()
+        internal static string FindText(Transform root)
         {
-            if (!_probed)
+            var comps = root.GetComponentsInChildren<TMPro.TMP_Text>(false);
+            for (int i = 0; i < comps.Length; i++)
             {
-                _probed = true;
-                var t = typeof(Selectable);
-                _arrayProp = t.GetProperty("allSelectablesArray", BindingFlags.Public | BindingFlags.Static);
-                _listProp = t.GetProperty("allSelectables", BindingFlags.Public | BindingFlags.Static);
+                var s = UGuiSource.Clean(comps[i].text);
+                if (!string.IsNullOrEmpty(s)) return s;
+            }
+            return null;
+        }
+
+        internal static string GetText(Component c)
+        {
+            var t = Compat.As<TMPro.TMP_Text>(c);
+            return t != null ? UGuiSource.Clean(t.text) : null;
+        }
+
+        internal static AccessRole RoleFor(Selectable sel)
+        {
+            if (Compat.Is<TMPro.TMP_InputField>(sel)) return AccessRole.TextInput;
+            if (Compat.Is<TMPro.TMP_Dropdown>(sel)) return AccessRole.ComboBox;
+            return AccessRole.Button;
+        }
+
+        internal static bool TryDescribe(Selectable sel, AccessNode node)
+        {
+            var dropdown = Compat.As<TMPro.TMP_Dropdown>(sel);
+            if (dropdown != null)
+            {
+                var caption = dropdown.captionText;
+                node.Value = caption != null ? UGuiSource.Clean(caption.text) : null;
+                node.Expanded = false;
+                node.AddAction(AccessAction.Click)
+                    .AddAction(AccessAction.Expand)
+                    .AddAction(AccessAction.Increment)
+                    .AddAction(AccessAction.Decrement);
+                return true;
             }
 
-            _buffer.Clear();
-            if (_arrayProp != null)
+            var input = Compat.As<TMPro.TMP_InputField>(sel);
+            if (input != null)
             {
-                var arr = _arrayProp.GetValue(null, null) as Selectable[];
-                if (arr != null) _buffer.AddRange(arr);
+                bool isPassword = input.contentType == TMPro.TMP_InputField.ContentType.Password;
+                node.Value = isPassword ? null : input.text;
+                if (isPassword) node.Role = AccessRole.PasswordInput;
+                node.AddAction(AccessAction.SetValue);
+                return true;
             }
-            else if (_listProp != null)
-            {
-                var list = _listProp.GetValue(null, null) as IList<Selectable>;
-                if (list != null)
-                    for (int i = 0; i < list.Count; i++) _buffer.Add(list[i]);
-            }
-            return _buffer;
+
+            return false;
+        }
+
+        internal static bool TryNudge(Selectable sel, int direction)
+        {
+            var dropdown = Compat.As<TMPro.TMP_Dropdown>(sel);
+            if (dropdown == null || dropdown.options == null || dropdown.options.Count == 0) return false;
+
+            int count = dropdown.options.Count;
+            int next = dropdown.value + direction;
+            if (next < 0) next = count - 1;
+            if (next >= count) next = 0;
+            dropdown.value = next;
+            return true;
         }
     }
-
+#else
     /// <summary>
     /// Reflection shim for TextMeshPro. TMP ships in most but not all games, and
     /// hard-referencing it would make this assembly fail to load where it is absent.
@@ -718,7 +833,7 @@ namespace UnityA11y.Unity
     {
         private static bool _probed;
         private static Type _tmpText, _tmpInputField, _tmpDropdown;
-        private static PropertyInfo _textProp;
+        private static System.Reflection.PropertyInfo _textProp;
 
         private static void Probe()
         {
@@ -732,7 +847,7 @@ namespace UnityA11y.Unity
                     if (_tmpInputField == null) _tmpInputField = asm.GetType("TMPro.TMP_InputField");
                     if (_tmpDropdown == null) _tmpDropdown = asm.GetType("TMPro.TMP_Dropdown");
                 }
-                catch (ReflectionTypeLoadException) { }
+                catch (System.Reflection.ReflectionTypeLoadException) { }
             }
             if (_tmpText != null) _textProp = _tmpText.GetProperty("text");
         }
@@ -813,4 +928,5 @@ namespace UnityA11y.Unity
             return true;
         }
     }
+#endif
 }

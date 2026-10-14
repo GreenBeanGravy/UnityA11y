@@ -1,0 +1,60 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The IL2CPP flavor: the same sources as ..\UnityA11y.csproj, compiled with IL2CPP defined
+    against a MelonLoader IL2CPP game's generated interop assemblies.
+
+    Mods usually compile these sources straight into their own assembly instead (same
+    Compile items, same define), so they ship one DLL. This project exists so the library
+    can be built and checked on its own.
+
+    Build:
+      dotnet build il2cpp\UnityA11y.Il2Cpp.csproj -c Release -p:GameDir="C:\Games\Foo"
+
+    GameDir is the folder holding the game's exe and MelonLoader\ (run the game once with
+    MelonLoader installed so MelonLoader\Il2CppAssemblies exists).
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>UnityA11y</AssemblyName>
+    <RootNamespace>UnityA11y</RootNamespace>
+    <DefineConstants>$(DefineConstants);IL2CPP</DefineConstants>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <DebugType>portable</DebugType>
+    <Deterministic>true</Deterministic>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <CheckEolTargetFramework>false</CheckEolTargetFramework>
+
+    <MelonDir>$(GameDir)\MelonLoader</MelonDir>
+    <Il2CppDir>$(MelonDir)\Il2CppAssemblies</Il2CppDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\src\UnityA11y.Core\**\*.cs" />
+    <Compile Include="..\src\UnityA11y.AccessKit\**\*.cs" />
+    <Compile Include="..\src\UnityA11y.Unity\**\*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="$(MelonDir)\net6\Il2CppInterop.Runtime.dll" Private="false" />
+    <Reference Include="$(MelonDir)\net6\Il2CppInterop.Common.dll" Private="false" />
+    <Reference Include="$(Il2CppDir)\Il2Cppmscorlib.dll" Private="false" />
+    <Reference Include="$(Il2CppDir)\Il2CppSystem.dll" Private="false" />
+    <Reference Include="$(Il2CppDir)\Il2CppSystem.Core.dll" Private="false" />
+    <Reference Include="$(Il2CppDir)\UnityEngine.CoreModule.dll" Private="false" />
+    <Reference Include="$(Il2CppDir)\UnityEngine.UI.dll" Private="false" />
+    <Reference Include="$(Il2CppDir)\UnityEngine.UIModule.dll" Private="false" />
+    <Reference Include="$(Il2CppDir)\UnityEngine.InputLegacyModule.dll" Private="false" />
+    <Reference Include="$(Il2CppDir)\UnityEngine.TextRenderingModule.dll" Private="false" />
+    <Reference Include="$(Il2CppDir)\UnityEngine.IMGUIModule.dll" Private="false" />
+    <Reference Include="$(Il2CppDir)\Unity.TextMeshPro.dll" Private="false" />
+  </ItemGroup>
+
+  <Target Name="RequireGameDir" BeforeTargets="ResolveAssemblyReferences">
+    <Error Condition="!Exists('$(Il2CppDir)\UnityEngine.UI.dll')"
+           Text="No MelonLoader interop assemblies under '$(Il2CppDir)'. Pass -p:GameDir=&quot;C:\path\to\game&quot; for an IL2CPP game with MelonLoader installed and run once." />
+  </Target>
+
+</Project>
