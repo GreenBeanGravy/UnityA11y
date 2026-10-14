@@ -1,5 +1,53 @@
 # Changelog
 
+## 0.3.0
+
+UnityA11y now lives in its own repository. LethalAccess and Super Auto Pets
+Accessibility take it as a git submodule.
+
+### New
+
+- **Provider mode.** `A11yRuntime.Create(IFocusOwner, suppressor, registerUGuiSource)`
+  publishes the tree and leaves navigation to the host: nothing is suppressed
+  and no keys are polled. `ExternalFocusOwner` reports the host's focus and
+  passes the screen reader's focus requests back.
+- **`EventSystemFocusOwner`.** Provider-mode focus for hosts whose navigation
+  moves the uGUI selection. Node ids follow `UGuiSource.StableId`.
+- **IL2CPP flavor.** `il2cpp/UnityA11y.Il2Cpp.csproj` builds the same sources
+  with `IL2CPP` defined against MelonLoader's interop assemblies; a mod can also
+  compile them into its own assembly. Tested on Super Auto Pets with MelonLoader
+  0.7.3 and Unity 6000.3.
+  - `Compat`: `As<T>` / `Is<T>` use `TryCast` under IL2CPP, where `as` checks
+    only the wrapper type and turned every control into a plain button.
+    `GetWorldCorners` goes through `Il2CppStructArray`, and `AllSelectables()`
+    through `AllSelectablesNoAlloc` into a reused buffer (the array property
+    cast to `Selectable[]` gave null, so no controls at all).
+  - `A11yRuntime` is a plain class under IL2CPP. The host calls `Tick()` every
+    frame and `Dispose()` on quit. The Mono flavor stays a MonoBehaviour.
+  - `A11yLabels` holds label and description overrides keyed by GameObject.
+    The `A11yLabel` component is Mono only.
+  - The change signature and the focused-node refresh run at 4 Hz and 10 Hz
+    under IL2CPP, since every interop call allocates.
+- **Text fields as a UIA TextPattern.** The input node plus one TextRun child
+  holding the characters, with the caret or selection on the input node.
+- **`A11yLog.Sink`** for library log lines, replacing `UnityEngine.Debug`, which
+  crashes IL2CPP when called from the UIA thread.
+- **`native/accesskit.dll`** (accesskit-c 0.22.3) ships in the repository.
+- **Diagnostics.** Bridge counters for window messages, `WM_GETOBJECT`,
+  activations and updates, and a log line for every published focus change.
+
+### Fixed
+
+| Bug | Fix |
+|---|---|
+| `PositionInSet` was one too high. AccessKit's position is 0-based and its Windows adapter adds one, so NVDA dropped "n of m" on the last control of every section. | Converted at the FFI boundary. |
+| No "of m" on screens without groups. The Windows adapter reads SizeOfSet from the container, never the item. | The screen node, or the flattened group's root in `UGuiSource`, carries the set size. |
+| Sliders published no value. | NumericValue with min, max and step from the Slider. |
+| NVDA needed an alt-tab before it saw the tree: it asked the window before the adapter attached and kept the "no provider" answer. | After attaching, the bridge raises `EVENT_OBJECT_FOCUS` while the game window is in the foreground. |
+| `WM_DESTROY` cleared the saved window procedure and then forwarded to it, as `CallWindowProc(0, ...)`. | Forward from a local copy, or to `DefWindowProc`. |
+| The bridge took the active or first visible window of the process, which can be a splash or console window. | Prefers the window with class `UnityWndClass`. |
+| TextMesh Pro's zero-width characters (U+200B, U+200C, U+200D, U+2060, U+FEFF) reached labels and values. | Stripped. |
+
 ## 0.2.0 — bug-fix and correctness pass
 
 ### Behaviour changes
