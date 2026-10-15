@@ -262,8 +262,16 @@ namespace UnityA11y.Unity
             return -1;
         }
 
+        private int _tickedFrame = -1;
+
         public void Tick(IUiSource source)
         {
+            // The runtime ticks its focus owner from Update and again from FlushFocus in
+            // LateUpdate. GetKeyDown is still true there, so a second pass would move twice.
+            int frame = Time.frameCount;
+            if (frame == _tickedFrame) return;
+            _tickedFrame = frame;
+
             _suppressor.Tick();
             if (source == null) return;
 
