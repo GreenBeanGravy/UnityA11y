@@ -48,6 +48,24 @@ namespace UnityA11y.AccessKitInterop
         [DllImport("user32.dll")]
         private static extern IntPtr GetForegroundWindow();
 
+        [StructLayout(LayoutKind.Sequential)]
+        private struct MSG
+        {
+            public IntPtr hwnd;
+            public uint message;
+            public IntPtr wParam;
+            public IntPtr lParam;
+            public uint time;
+            public int x;
+            public int y;
+        }
+
+        [DllImport("user32.dll", EntryPoint = "PeekMessageW")]
+        private static extern bool PeekMessage(out MSG msg, IntPtr hWnd, uint filterMin, uint filterMax, uint remove);
+
+        private const uint PM_NOREMOVE = 0x0000;
+        private const uint PM_QS_SENDMESSAGE = 0x00400000;
+
         [DllImport("user32.dll", SetLastError = true)]
         private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
 
@@ -218,6 +236,21 @@ namespace UnityA11y.AccessKitInterop
                 _adapter, _updateFactoryKeepAlive, IntPtr.Zero);
             if (events != IntPtr.Zero)
                 AK.accesskit_windows_queued_events_raise(events);
+        }
+
+        /// <summary>
+        /// Answers the messages other processes have SENT to this thread's windows now, instead
+        /// of at Unity's next message pump, which is once a frame. A screen reader sends several
+        /// in a row when focus changes (WM_GETOBJECT to find the provider, the window's MSAA
+        /// object, the walk up to the desktop), each waiting for a pump: four of them took four
+        /// frames. Posted messages, the game's input among them, stay in the queue untouched.
+        /// Main thread only, between tree updates.
+        /// </summary>
+        public void PumpSentMessages()
+        {
+            if (!IsRunning) return;
+            MSG msg;
+            PeekMessage(out msg, IntPtr.Zero, 0, 0, PM_NOREMOVE | PM_QS_SENDMESSAGE);
         }
 
         public bool TryDequeueAction(out PendingAction action)
