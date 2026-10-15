@@ -586,7 +586,13 @@ namespace UnityA11y.Unity
             for (int i = 0; i < s.Length; i++)
             {
                 char c = s[i];
-                if (c == '<') { inTag = true; continue; }
+                if (c == '<')
+                {
+                    inTag = true;
+                    // A line break joined the words around it ("perk.<br>Before" read "perk.Before").
+                    if (string.Compare(s, i, "<br", 0, 3, StringComparison.OrdinalIgnoreCase) == 0) sb.Append(' ');
+                    continue;
+                }
                 if (c == '>') { inTag = false; continue; }
                 if (!inTag && !IsZeroWidth(c)) sb.Append(c);
             }
