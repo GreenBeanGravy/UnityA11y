@@ -304,7 +304,8 @@ Keep the game's frame rate up. NVDA's requests to the game window itself (findin
 provider, the window's MSAA object, walking up to the desktop) are answered only when
 Unity reads window messages, once a frame, and NVDA makes several in a row when focus
 changes. At 18 fps a focus move took most of a second to be spoken; at 60 fps it is
-quick. A mod that scans the scene every frame (`FindObjectOfType` costs about 2.5 ms
+quick. `Tick` and `FlushFocus` also answer those requests when they run
+(`PumpWindowMessages`, on by default), which roughly halves the wait. A mod that scans the scene every frame (`FindObjectOfType` costs about 2.5 ms
 under IL2CPP) slows every screen reader request with it, so cache what you look up.
 
 BepInEx 6 on an IL2CPP game works the same way, from a MonoBehaviour your plugin

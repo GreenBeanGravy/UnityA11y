@@ -55,6 +55,13 @@ Accessibility take it as a git submodule.
 - Focus on a control the tree does not have yet (a new screen) rebuilds at once,
   instead of waiting for the source's next change check, which is a quarter second
   under IL2CPP.
+- `A11yRuntime.PumpWindowMessages` (on by default) answers messages other processes
+  have sent to the game window at the start of `Tick` and the end of `FlushFocus`,
+  not only when Unity reads its queue once a frame. NVDA asks the window for its
+  UIA root and MSAA object on each focus change; on Super Auto Pets at 60 fps the
+  window round-trip went from 67 ms to 27 ms and key-to-focus-event from 42 ms to
+  30 ms. Only sent messages are handled (`PeekMessage` with
+  `PM_NOREMOVE | PM_QS_SENDMESSAGE`); the game's input queue is untouched.
 - README: why the game's frame rate decides how fast NVDA speaks, measured on Super
   Auto Pets.
 
