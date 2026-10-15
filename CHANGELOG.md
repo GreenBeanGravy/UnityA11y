@@ -47,7 +47,7 @@ Accessibility take it as a git submodule.
 | `WM_DESTROY` cleared the saved window procedure and then forwarded to it, as `CallWindowProc(0, ...)`. | Forward from a local copy, or to `DefWindowProc`. |
 | The bridge took the active or first visible window of the process, which can be a splash or console window. | Prefers the window with class `UnityWndClass`. |
 | TextMesh Pro's zero-width characters (U+200B, U+200C, U+200D, U+2060, U+FEFF) reached labels and values. | Stripped. |
-| TextMesh Pro sprite tags were stripped with the rest, so "Give +2<sprite name=Attack>" read "Give +2". | A sprite reads as its name, split at capitals, unless the next word already says it (`UGuiSource.SpritesAsWords`). |
+| TextMesh Pro sprite tags were stripped with the rest, so "Give +2<sprite name=Attack>" read "Give +2". | A sprite reads as its name, split at capitals, unless the next word already says it (`UGuiSource.SpritesAsWords`). Hosts map names that are not words through `UGuiSource.SpriteText` ("ArrowRight" to ":"). |
 
 ## 0.2.0 — bug-fix and correctness pass
 

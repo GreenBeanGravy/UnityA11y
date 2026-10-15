@@ -598,9 +598,19 @@ namespace UnityA11y.Unity
                 System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
         /// <summary>
+        /// What a sprite reads as, by sprite name (any case), for names that are not words. A
+        /// game's "ArrowRight" between a trigger and its effect reads better as ":". An empty
+        /// string drops the sprite. Text starting with punctuation attaches to the word before.
+        /// Set by the host at startup.
+        /// </summary>
+        public static readonly Dictionary<string, string> SpriteText =
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>
         /// TextMesh Pro sprites often stand for a word: "+2&lt;sprite name=Attack&gt;". Stripping
         /// the tag with the rest lost it ("+2"). A sprite reads as its name, split at capitals,
-        /// unless the text right after it already says that word ("[mana icon] mana").
+        /// unless the text right after it already says that word ("[mana icon] mana"), or as
+        /// its <see cref="SpriteText"/> entry.
         /// </summary>
         public static string SpritesAsWords(string s)
         {
@@ -613,6 +623,13 @@ namespace UnityA11y.Unity
             {
                 sb.Append(s, last, m.Index - last);
                 last = m.Index + m.Length;
+                if (SpriteText.TryGetValue(m.Groups[1].Value, out string mapped))
+                {
+                    if (mapped.Length > 0 && !char.IsLetterOrDigit(mapped[0]))
+                        while (sb.Length > 0 && sb[sb.Length - 1] == ' ') sb.Length--;
+                    sb.Append(mapped).Append(' ');
+                    continue;
+                }
                 string word = System.Text.RegularExpressions.Regex.Replace(m.Groups[1].Value, "(?<=[a-z])(?=[A-Z0-9])", " ");
                 string rest = s.Substring(last).TrimStart();
                 sb.Append(rest.StartsWith(word, StringComparison.OrdinalIgnoreCase) ? " " : " " + word + " ");
