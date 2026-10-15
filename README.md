@@ -2,7 +2,7 @@
 
 Publishes a Unity game's menus to Windows UI Automation, so screen readers such as NVDA can read and handle them natively.
 
-Used by [LethalAccess](https://github.com/GreenBeanGravy/LethalAccess) (BepInEx, Mono) and [Super Auto Pets Accessibility](https://github.com/GreenBeanGravy/SuperAutoAccessibility) (MelonLoader, IL2CPP).
+Used by [LethalAccess](https://github.com/GreenBeanGravy/LethalAccess-Dev) (BepInEx, Mono) and [Super Auto Pets Accessibility](https://github.com/GreenBeanGravy/SuperAutoAccessibility) (MelonLoader, IL2CPP).
 
 ## Supported setups
 
