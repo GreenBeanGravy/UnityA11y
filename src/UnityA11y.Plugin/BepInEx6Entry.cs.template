@@ -72,6 +72,9 @@ namespace UnityA11y.Plugin
             _runtime.Tick();
         }
 
+        // Focus the game moved during this frame's Update is published this frame.
+        private void LateUpdate() => _runtime?.FlushFocus();
+
         private void OnApplicationQuit() => _runtime?.Dispose();
     }
 }

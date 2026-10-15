@@ -45,6 +45,19 @@ Accessibility take it as a git submodule.
 - **Diagnostics.** Bridge counters for window messages, `WM_GETOBJECT`,
   activations and updates, and a log line for every published focus change.
 
+### Faster focus
+
+- `A11yRuntime.FlushFocus()` publishes a focus move made after this frame's `Tick`
+  in the same frame. The Mono runtime calls it from `LateUpdate`; IL2CPP hosts call
+  it from their late update (the README and the BepInEx 6 template show how).
+  Before, a host that moved the selection in its own Update was published a frame
+  later.
+- Focus on a control the tree does not have yet (a new screen) rebuilds at once,
+  instead of waiting for the source's next change check, which is a quarter second
+  under IL2CPP.
+- README: why the game's frame rate decides how fast NVDA speaks, measured on Super
+  Auto Pets.
+
 ### Fixed
 
 | Bug | Fix |

@@ -254,6 +254,9 @@ namespace UnityA11y.Unity
 
 #if !IL2CPP
         private void Update() => Tick();
+
+        // The host's own Update may run after this one: publish what it moved this frame.
+        private void LateUpdate() => FlushFocus();
 #endif
 
         /// <summary>
@@ -284,18 +287,57 @@ namespace UnityA11y.Unity
             if (RefreshFocusedNode && _nav.CurrentId != 0)
                 changed |= RefreshFocused();
 
-            if (_snapshot.FocusId != _nav.CurrentId && _nav.CurrentId != 0 &&
-                _snapshot.Contains(_nav.CurrentId))
-            {
-                _snapshot.FocusId = _nav.CurrentId;
-                changed = true;
-            }
-
-            // Push unconditionally when something moved; the differ discards
-            // no-op pushes without crossing FFI, so this is cheap.
-            if (changed) _bridge.Push(_snapshot);
+            // Push when something moved; the differ discards no-op pushes without
+            // crossing FFI, so this is cheap.
+            if (!PublishFocus() && changed) _bridge.Push(_snapshot);
 
             TraceFocusPush();
+        }
+
+        /// <summary>
+        /// Publish a focus move the host made after this frame's <see cref="Tick"/>, in the
+        /// same frame instead of the next. Call it from LateUpdate (the Mono flavour does it
+        /// itself; under IL2CPP the host calls it, from MelonMod.OnLateUpdate for example).
+        /// Cheap: it reads the focus owner and pushes only when focus moved.
+        ///
+        /// A frame matters more than it looks. The screen reader's own requests to the game
+        /// window (WM_GETOBJECT, the window's MSAA object) are answered only when Unity reads
+        /// its messages, once a frame, and NVDA makes several in a row on a focus change, so
+        /// every frame of delay here comes on top of a few more there.
+        /// </summary>
+        public void FlushFocus()
+        {
+            if (_active == null || _nav == null) return;
+            _nav.Tick(_active);
+            PublishFocus();
+            TraceFocusPush();
+        }
+
+        private ulong _rebuiltForFocus;
+
+        /// <summary>
+        /// Moves the published focus to the focus owner's control. Focus on a control the tree
+        /// does not have yet means a new screen: rebuild now, once per such control, rather than
+        /// wait for the source's next change check (a quarter second under IL2CPP). True when
+        /// it pushed.
+        /// </summary>
+        private bool PublishFocus()
+        {
+            ulong id = _nav.CurrentId;
+            if (id == 0 || id == _snapshot.FocusId) return false;
+
+            if (!_snapshot.Contains(id))
+            {
+                if (id == _rebuiltForFocus) return false;
+                _rebuiltForFocus = id;
+                Rebuild();
+                return _snapshot.FocusId == id;
+            }
+
+            _snapshot.FocusId = id;
+            _rebuiltForFocus = 0;
+            _bridge.Push(_snapshot);
+            return true;
         }
 
         private ulong _lastTracedFocus;
