@@ -15,6 +15,32 @@ Mono) and [Super Auto Pets Accessibility](https://github.com/GreenBeanGravy/Supe
 
 ---
 
+## Compatibility
+
+UnityA11y is a library, not a plugin: a mod compiles it in (or ships the DLL) and
+starts the runtime itself, so the mod loader only matters for how it is built.
+
+| Loader and runtime | Status | Notes |
+|---|---|---|
+| BepInEx 5, Mono games | Supported | `net472` flavor. LethalAccess. |
+| BepInEx 6, Mono games | Should work, untried | The library uses no BepInEx API. Only the optional `UnityA11y.Plugin` entry point is written against BepInEx 5. |
+| MelonLoader, Mono games | Should work, untried | Same `net472` flavor, started from your `MelonMod` (see `MelonEntry.cs.template`). |
+| MelonLoader 0.6 and newer, IL2CPP games | Supported | `IL2CPP` flavor, `net6.0`, built against MelonLoader's Il2CppInterop assemblies. Super Auto Pets on 0.7.3. |
+| MelonLoader 0.5 and older, IL2CPP games | Not supported | Those versions generate assemblies with Il2CppAssemblyUnhollower, not Il2CppInterop. |
+| BepInEx 6, IL2CPP games | Not yet | Also Il2CppInterop, but its assemblies keep `TMPro` without MelonLoader's `Il2Cpp` prefix and live under `BepInEx\interop`. The `TMPro` alias in `UGuiSource.cs` and the csproj paths need a switch for it. |
+
+Other limits, whatever the loader:
+
+- **Windows, 64-bit.** The tree goes out through AccessKit's Windows UIA adapter,
+  and `native/accesskit.dll` is x64. A 32-bit game needs an x86 build of
+  `accesskit-c`.
+- **.NET 4.x scripting runtime** for Mono games. A game still on Unity's old .NET
+  3.5 runtime cannot load a `net472` assembly.
+- **uGUI.** `UGuiSource` finds `Selectable`s. Menus built with UI Toolkit, IMGUI or
+  world-space sprites need their own `IUiSource`. TextMesh Pro is optional.
+
+---
+
 ## What NVDA does for you, and what it does not
 
 This is the part that trips people up, so it is worth being exact.
@@ -373,8 +399,9 @@ Honest list, roughly in the order I would close them:
   bounding boxes fall back to less precise results.
 - **Report hotkeys** for HUD state are not implemented.
 - **No config file.** Keybinds are fields on `NavigationController`.
-- **32-bit games.** The action-request field offsets were measured on a 64-bit
-  build. They should hold on 32-bit Windows too, since the struct's alignment is
+- **32-bit games.** The shipped `accesskit.dll` is x64, so a 32-bit game needs
+  an x86 `accesskit-c` build. The action-request field offsets were measured on
+  a 64-bit build; they should hold on 32-bit too, since the struct's alignment is
   driven by a `u64` and a `double`, but it is unverified.
 
 ---
