@@ -2,17 +2,23 @@
 
   <!--
     The IL2CPP flavor: the same sources as ..\UnityA11y.csproj, compiled with IL2CPP defined
-    against a MelonLoader IL2CPP game's generated interop assemblies.
+    against an IL2CPP game's generated interop assemblies, from MelonLoader or BepInEx 6.
 
     Mods usually compile these sources straight into their own assembly instead (same
-    Compile items, same define), so they ship one DLL. This project exists so the library
+    Compile items, same defines), so they ship one DLL. This project exists so the library
     can be built and checked on its own.
 
     Build:
       dotnet build il2cpp\UnityA11y.Il2Cpp.csproj -c Release -p:GameDir="C:\Games\Foo"
+      dotnet build il2cpp\UnityA11y.Il2Cpp.csproj -c Release -p:GameDir="C:\Games\Foo" -p:Loader=BepInEx
 
-    GameDir is the folder holding the game's exe and MelonLoader\ (run the game once with
-    MelonLoader installed so MelonLoader\Il2CppAssemblies exists).
+    GameDir is the folder holding the game's exe and the loader's folder. Run the game once
+    with the loader installed so the interop assemblies exist (MelonLoader\Il2CppAssemblies,
+    or BepInEx\interop).
+
+    The two loaders generate different namespaces: MelonLoader prefixes every non-Unity
+    namespace with Il2Cpp (Il2CppTMPro), BepInEx 6 keeps them (TMPro). Loader=BepInEx defines
+    BEPINEX, which drops the alias in UGuiSource.
   -->
 
   <PropertyGroup>
@@ -27,8 +33,18 @@
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
     <CheckEolTargetFramework>false</CheckEolTargetFramework>
 
-    <MelonDir>$(GameDir)\MelonLoader</MelonDir>
-    <Il2CppDir>$(MelonDir)\Il2CppAssemblies</Il2CppDir>
+    <Loader Condition="'$(Loader)' == ''">MelonLoader</Loader>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Loader)' == 'MelonLoader'">
+    <InteropRuntimeDir>$(GameDir)\MelonLoader\net6</InteropRuntimeDir>
+    <Il2CppDir>$(GameDir)\MelonLoader\Il2CppAssemblies</Il2CppDir>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Loader)' == 'BepInEx'">
+    <DefineConstants>$(DefineConstants);BEPINEX</DefineConstants>
+    <InteropRuntimeDir>$(GameDir)\BepInEx\core</InteropRuntimeDir>
+    <Il2CppDir>$(GameDir)\BepInEx\interop</Il2CppDir>
   </PropertyGroup>
 
   <ItemGroup>
@@ -38,8 +54,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Reference Include="$(MelonDir)\net6\Il2CppInterop.Runtime.dll" Private="false" />
-    <Reference Include="$(MelonDir)\net6\Il2CppInterop.Common.dll" Private="false" />
+    <Reference Include="$(InteropRuntimeDir)\Il2CppInterop.Runtime.dll" Private="false" />
+    <Reference Include="$(InteropRuntimeDir)\Il2CppInterop.Common.dll" Private="false" />
     <Reference Include="$(Il2CppDir)\Il2Cppmscorlib.dll" Private="false" />
     <Reference Include="$(Il2CppDir)\Il2CppSystem.dll" Private="false" />
     <Reference Include="$(Il2CppDir)\Il2CppSystem.Core.dll" Private="false" />
@@ -53,8 +69,10 @@
   </ItemGroup>
 
   <Target Name="RequireGameDir" BeforeTargets="ResolveAssemblyReferences">
+    <Error Condition="'$(Loader)' != 'MelonLoader' And '$(Loader)' != 'BepInEx'"
+           Text="Loader must be MelonLoader or BepInEx, not '$(Loader)'." />
     <Error Condition="!Exists('$(Il2CppDir)\UnityEngine.UI.dll')"
-           Text="No MelonLoader interop assemblies under '$(Il2CppDir)'. Pass -p:GameDir=&quot;C:\path\to\game&quot; for an IL2CPP game with MelonLoader installed and run once." />
+           Text="No $(Loader) interop assemblies under '$(Il2CppDir)'. Pass -p:GameDir=&quot;C:\path\to\game&quot; for an IL2CPP game with $(Loader) installed and run once." />
   </Target>
 
 </Project>

@@ -4,8 +4,9 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.UI;
 using UnityA11y.Core;
-#if IL2CPP
-// MelonLoader's generator prefixes every non-Unity namespace with Il2Cpp.
+#if IL2CPP && !BEPINEX
+// MelonLoader's generator prefixes every non-Unity namespace with Il2Cpp. BepInEx 6 keeps
+// the game's own namespaces (TMPro), so its build defines BEPINEX and needs no alias.
 using TMPro = Il2CppTMPro;
 #endif
 

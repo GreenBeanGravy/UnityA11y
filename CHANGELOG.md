@@ -7,6 +7,15 @@ Accessibility take it as a git submodule.
 
 ### New
 
+- **BepInEx 6 on IL2CPP games.** `il2cpp/UnityA11y.Il2Cpp.csproj` takes
+  `-p:Loader=BepInEx` (default `MelonLoader`), which builds against
+  `BepInEx\interop` and `BepInEx\core` and defines `BEPINEX`. With `BEPINEX`
+  defined, `UGuiSource` uses BepInEx's unprefixed `TMPro` namespace instead of
+  MelonLoader's `Il2CppTMPro`. `BepInEx6Entry.cs.template` is a ready entry
+  point: a `BasePlugin` that resolves `accesskit.dll` beside the plugin and
+  drives the runtime from an injected MonoBehaviour. Tried on Super Auto Pets
+  with BepInEx 6.0.0-be.788 (Unity 6000.3).
+
 - **Provider mode.** `A11yRuntime.Create(IFocusOwner, suppressor, registerUGuiSource)`
   publishes the tree and leaves navigation to the host: nothing is suppressed
   and no keys are polled. `ExternalFocusOwner` reports the host's focus and

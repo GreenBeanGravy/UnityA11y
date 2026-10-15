@@ -27,7 +27,7 @@ starts the runtime itself, so the mod loader only matters for how it is built.
 | MelonLoader, Mono games | Should work, untried | Same `net472` flavor, started from your `MelonMod` (see `MelonEntry.cs.template`). |
 | MelonLoader 0.6 and newer, IL2CPP games | Supported | `IL2CPP` flavor, `net6.0`, built against MelonLoader's Il2CppInterop assemblies. Super Auto Pets on 0.7.3. |
 | MelonLoader 0.5 and older, IL2CPP games | Not supported | Those versions generate assemblies with Il2CppAssemblyUnhollower, not Il2CppInterop. |
-| BepInEx 6, IL2CPP games | Not yet | Also Il2CppInterop, but its assemblies keep `TMPro` without MelonLoader's `Il2Cpp` prefix and live under `BepInEx\interop`. The `TMPro` alias in `UGuiSource.cs` and the csproj paths need a switch for it. |
+| BepInEx 6, IL2CPP games | Supported | `IL2CPP` flavor with `BEPINEX` also defined, built against `BepInEx\interop` (its assemblies keep `TMPro` without MelonLoader's `Il2Cpp` prefix). Tried on Super Auto Pets with BepInEx 6.0.0-be.788; entry point in `BepInEx6Entry.cs.template`. |
 
 Other limits, whatever the loader:
 
@@ -156,7 +156,7 @@ returns without crossing FFI at all.
 | `UnityA11y.Core` | Node/snapshot model, content hashing, `IUiSource` | No |
 | `UnityA11y.AccessKit` | P/Invoke, adapter lifecycle, WndProc subclass, diffing | No |
 | `UnityA11y.Unity` | uGUI scanner, focus owners, runtime driver, IL2CPP shims (`Compat`) | No |
-| `UnityA11y.Plugin` | Standalone BepInEx entry point; not compiled by default (see the csproj) | No |
+| `UnityA11y.Plugin` | Entry points: BepInEx 5 (`Plugin.cs`), BepInEx 6 IL2CPP and MelonLoader (`.template` files). Not compiled by default (see the csproj) | No |
 | Your adapter | One `IUiSource` implementation | **Yes** |
 
 ---
@@ -253,6 +253,16 @@ dotnet build il2cpp\UnityA11y.Il2Cpp.csproj -c Release -p:GameDir="C:\Games\Your
 Run the game once with MelonLoader first, so the interop assemblies exist under
 `MelonLoader\Il2CppAssemblies`.
 
+IL2CPP games with BepInEx 6, `net6.0`, `IL2CPP` and `BEPINEX` defined:
+
+```
+dotnet build il2cpp\UnityA11y.Il2Cpp.csproj -c Release -p:GameDir="C:\Games\YourGame" -p:Loader=BepInEx
+```
+
+Run the game once with BepInEx first. It downloads Unity's base libraries for the
+game's Unity version and writes the interop assemblies to `BepInEx\interop`. The
+interop runtime (`Il2CppInterop.Runtime.dll`) comes from `BepInEx\core`.
+
 Instead of shipping `UnityA11y.dll`, a mod can compile the sources into its own
 assembly. That keeps the mod one DLL, which matters when an updater or installer
 only knows about that one file:
@@ -268,7 +278,10 @@ only knows about that one file:
 </ItemGroup>
 ```
 
-Leave out the `IL2CPP` define for a Mono game.
+Leave out the `IL2CPP` define for a Mono game. For BepInEx 6 on an IL2CPP game,
+define `BEPINEX` as well: MelonLoader prefixes every non-Unity namespace with
+`Il2Cpp` (`Il2CppTMPro`) and BepInEx 6 does not, and `UGuiSource.cs` picks its
+`TMPro` alias from that define.
 
 ### 3. Start it
 
@@ -296,6 +309,14 @@ public override void OnUpdate()
 
 public override void OnApplicationQuit() => _runtime?.Dispose();
 ```
+
+BepInEx 6 on an IL2CPP game is the same, from a MonoBehaviour your plugin
+registers: `BasePlugin.AddComponent<T>()` injects the class into the IL2CPP domain
+and adds it to BepInEx's manager object, and the class needs a constructor taking
+an `IntPtr`. Plugins there run on CoreCLR too, so point the `[DllImport]`s at your
+copy of `accesskit.dll` with `NativeLibrary.SetDllImportResolver` before the
+runtime starts. `src\UnityA11y.Plugin\BepInEx6Entry.cs.template` does both:
+rename it to `.cs` and compile it with the sources.
 
 Set `A11yLog.Sink` if you want the library's log lines in your own log. Do not
 point it at `UnityEngine.Debug` under IL2CPP: some lines come from the UIA thread,
@@ -392,8 +413,10 @@ Honest list, roughly in the order I would close them:
   (`UIAHandler.UIALiveSettingtoNVDAAriaLivePoliteness`), but whether the
   AccessKit Windows adapter raises `LiveRegionChanged` on a node change needs
   confirming with AccEvent on first run. If `Announce` is silent, start there.
-- **IL2CPP is tested on one game.** Super Auto Pets (Unity 6000.3, MelonLoader
-  0.7.3, CoreCLR). BepInEx 6's IL2CPP support has not been tried.
+- **IL2CPP is tested on one game.** Super Auto Pets (Unity 6000.3) under
+  MelonLoader 0.7.3 and under BepInEx 6.0.0-be.788, both on CoreCLR. BepInEx 6
+  was checked with the generic uGUI scanner only (menus read through UI
+  Automation, clean exit), not with a game adapter.
 - **Text fields have no character positions or word starts.** The TextPattern
   works for reading and caret movement; NVDA's word movement and character
   bounding boxes fall back to less precise results.

@@ -1,0 +1,77 @@
+// Rename to BepInEx6Entry.cs to target BepInEx 6 on an IL2CPP game. Build with IL2CPP and
+// BEPINEX defined (il2cpp\UnityA11y.Il2Cpp.csproj with -p:Loader=BepInEx defines both) and
+// reference BepInEx.Core.dll and BepInEx.Unity.IL2CPP.dll from BepInEx\core. Put
+// accesskit.dll next to the plugin's DLL. Ship only one loader entry point per game.
+
+using System;
+using System.IO;
+using System.Reflection;
+using System.Runtime.InteropServices;
+using BepInEx;
+using BepInEx.Unity.IL2CPP;
+using UnityEngine;
+using UnityEngine.EventSystems;
+using UnityA11y.Unity;
+
+namespace UnityA11y.Plugin
+{
+    [BepInPlugin("dev.unitya11y.base", "Unity Accessibility Base", "0.3.0")]
+    public class A11yBepInEx6Plugin : BasePlugin
+    {
+        internal static A11yBepInEx6Plugin Instance;
+        private static IntPtr _accessKit;
+
+        public override void Load()
+        {
+            Instance = this;
+
+            // BepInEx 6 runs IL2CPP plugins on CoreCLR, where a LoadLibrary of its own does
+            // not satisfy a [DllImport]. Point UnityA11y's imports at the copy beside this DLL.
+            string dir = Path.GetDirectoryName(typeof(A11yBepInEx6Plugin).Assembly.Location);
+            string path = Path.Combine(dir, "accesskit.dll");
+            if (NativeLibrary.TryLoad(path, out _accessKit))
+                NativeLibrary.SetDllImportResolver(typeof(A11yRuntime).Assembly, Resolve);
+            else
+                Log.LogWarning("accesskit.dll not found at " + path + "; screen readers will not see the UI.");
+
+            // A MonoBehaviour defined in a plugin has to be registered with the IL2CPP class
+            // injector before it can be added; BasePlugin.AddComponent does both.
+            AddComponent<A11yDriver>();
+        }
+
+        private static IntPtr Resolve(string name, Assembly assembly, DllImportSearchPath? searchPath) =>
+            name == "accesskit" ? _accessKit : IntPtr.Zero;
+    }
+
+    /// <summary>
+    /// Ticks the runtime every frame. Under IL2CPP the runtime is a plain class, so something
+    /// the game updates has to drive it.
+    /// </summary>
+    public class A11yDriver : MonoBehaviour
+    {
+        private A11yRuntime _runtime;
+        private float _nextAttach;
+
+        public A11yDriver(IntPtr ptr) : base(ptr) { }
+
+        private void Update()
+        {
+            if (_runtime == null && EventSystem.current != null)
+            {
+                // Provider mode: the game keeps its own navigation, the tree follows the
+                // EventSystem's selection.
+                _runtime = A11yRuntime.Create(new EventSystemFocusOwner(), null, registerUGuiSource: true);
+                _runtime.Log = msg => A11yBepInEx6Plugin.Instance.Log.LogInfo(msg);
+            }
+            if (_runtime == null) return;
+            if (!_runtime.BridgeRunning && Time.unscaledTime >= _nextAttach)
+            {
+                _nextAttach = Time.unscaledTime + 1f;
+                _runtime.TryAttachBridge();
+            }
+            _runtime.Tick();
+        }
+
+        private void OnApplicationQuit() => _runtime?.Dispose();
+    }
+}
