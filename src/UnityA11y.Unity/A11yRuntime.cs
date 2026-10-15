@@ -314,9 +314,12 @@ namespace UnityA11y.Unity
 
             var node = _snapshot.Find(_snapshot.FocusId);
             var root = _snapshot.Find(_snapshot.RootId);
-            var screen = root != null && root.Children.Count > 0
+            var first = root != null && root.Children.Count > 0
                 ? _snapshot.Find(root.Children[0])
                 : null;
+            // A flat tree has no screen node: its first child is a control, which this line
+            // used to report as the screen ("screen='Scrollbar Vertical'").
+            var screen = first != null && !first.Focusable ? first : null;
             Log("focus -> " + _snapshot.FocusId + " '" + (node != null ? node.Label : "<missing>") +
                 "' screen='" + (screen != null ? screen.Label : "") + "'");
         }

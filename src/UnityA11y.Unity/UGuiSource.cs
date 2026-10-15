@@ -536,6 +536,12 @@ namespace UnityA11y.Unity
             string text = FindTextInChildren(sel.transform);
             if (!string.IsNullOrEmpty(text)) return text;
 
+            // A scroll bar's siblings are the viewport it scrolls, so the sibling search named
+            // it after the first row of the list, and its object name ("Scrollbar Vertical")
+            // repeats the role the screen reader already says.
+            var scrollbar = Compat.As<Scrollbar>(sel);
+            if (scrollbar != null) return ScrollbarLabel(sel.gameObject.name, scrollbar);
+
             // Settings rows usually put the label beside the control rather than
             // inside it, so check siblings before giving up.
             var parent = sel.transform.parent;
@@ -674,6 +680,26 @@ namespace UnityA11y.Unity
             for (int i = 0; i < s.Length; i++)
                 if (IsZeroWidth(s[i])) return true;
             return false;
+        }
+
+        /// <summary>
+        /// A scroll bar's object name without the words for its role ("Scrollbar Vertical" ->
+        /// "Vertical"), or its orientation when nothing else is left.
+        /// </summary>
+        protected static string ScrollbarLabel(string objectName, Scrollbar scrollbar)
+        {
+            string name = " " + Humanize(objectName) + " ";
+            foreach (var word in new[] { " Scrollbar ", " Scroll Bar ", " Scroll ", " Bar " })
+            {
+                int at;
+                while ((at = name.IndexOf(word, StringComparison.OrdinalIgnoreCase)) >= 0)
+                    name = name.Remove(at, word.Length - 1);
+            }
+            name = name.Trim();
+            if (name.Length > 0) return name;
+            return scrollbar.direction == Scrollbar.Direction.BottomToTop ||
+                   scrollbar.direction == Scrollbar.Direction.TopToBottom
+                ? "Vertical" : "Horizontal";
         }
 
         /// <summary>"MasterVolumeSlider" -> "Master Volume Slider". Last-resort labelling.</summary>

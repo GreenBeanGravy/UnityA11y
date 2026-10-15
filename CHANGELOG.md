@@ -58,6 +58,7 @@ Accessibility take it as a git submodule.
 | TextMesh Pro's zero-width characters (U+200B, U+200C, U+200D, U+2060, U+FEFF) reached labels and values. | Stripped. |
 | TextMesh Pro sprite tags were stripped with the rest, so "Give +2<sprite name=Attack>" read "Give +2". | A sprite reads as its name, split at capitals, unless the next word already says it (`UGuiSource.SpritesAsWords`). Hosts map names that are not words through `UGuiSource.SpriteText` ("ArrowRight" to ":"). |
 | A `<br>` tag joined the words around it ("perk.<br>Before" read "perk.Before"). | Read as a space. |
+| A scroll bar with no text took its label from its sibling, the viewport it scrolls, so it was named after the list's first row; with nothing there, after its object name ("Scrollbar Vertical"), repeating the role. | Scroll bars use their object name without the role words, or their orientation ("Vertical"). |
 
 ## 0.2.0 — bug-fix and correctness pass
 
